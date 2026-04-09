@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dead by Daylight • Killer Streak Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Creepster&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+        }
+        
+        .title-font {
+            font-family: 'Creepster', system-ui;
+            font-size: 2.25rem;
+            letter-spacing: -2px;
+        }
+
+        /* Perk Diamond */
+        .perk-diamond {
+            width: 100px; height: 100px;
+            background: #4c1d95;
+            clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.7);
+        }
+        .perk-diamond img { width: 90px; height: 90px; object-fit: contain; }
+
+        .perk-card:hover:not(.used) { transform: translateY(-6px) scale(1.05); }
+        .perk-card.selected .perk-diamond {
+            background: #22c55e;
+            box-shadow: 0 0 30px #86efac;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse { 0%,100% { box-shadow: 0 0 20px #22c55e; } 50% { box-shadow: 0 0 40px #86efac; } }
+
+        .used { 
+            filter: grayscale(90%) brightness(60%); 
+            opacity: 0.6; 
+            cursor: not-allowed; 
+        }
+
+        /* Killer Portrait */
+        .killer-portrait {
+            width: 148px; height: 210px;
+            object-fit: cover;
+            border: 4px solid #27272a;
+            border-radius: 12px;
+        }
+        .killer-card:hover:not(.used) .killer-portrait { 
+            border-color: #22c55e; 
+            transform: scale(1.04); 
+        }
+        .selected .killer-portrait { 
+            border-color: #22c55e; 
+            box-shadow: 0 0 25px #22c55e; 
+        }
+
+        /* Add-on Rarity Diamonds */
+        .addon-brown  { background: #8B4513; }
+        .addon-green  { background: #228B22; }
+        .addon-blue   { background: #1E90FF; }
+        .addon-purple { background: #8A2BE2; }
+        .addon-red    { background: #B22222; }
+
+        .addon-diamond {
+    width: 78px; 
+    height: 78px;
+    display: flex; 
+    align-items: center; 
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    transition: all 0.2s ease;
+    border: 2px solid #3f3f46;
+    border-radius: 12px;  
+    font-weight: bold;
+}
+        .addon-diamond.selected {
+            box-shadow: 0 0 25px currentColor;
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+
+    <!-- Header -->
+    <div class="border-b border-zinc-800 bg-black sticky top-0 z-50">
+        <div class="max-w-screen-2xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div class="flex items-center gap-x-4">
+                <img src="https://deadbydaylight.wiki.gg/images/IconFavors_ebonyMementoMori.png"
+                     alt="Ebony Memento Mori"
+                     class="w-12 h-12 object-contain drop-shadow-md">
+                <div>
+                    <h1 class="title-font text-4xl tracking-[-2px] text-white">DEAD BY DAYLIGHT</h1>
+                    <p class="text-emerald-400 text-sm -mt-1 tracking-widest">KILLER STREAK TRACKER</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-x-8">
+                <div class="flex items-center gap-x-3">
+                    <span class="text-sm font-medium text-zinc-400">STREAK</span>
+                    <div id="progress-bar" class="w-64 h-3 bg-zinc-900 rounded-full overflow-hidden">
+                        <div id="progress-fill" class="h-full bg-emerald-500 w-0 transition-all duration-500"></div>
+                    </div>
+                    <div id="progress-text" class="font-mono text-xl font-bold text-emerald-400">0 / 42</div>
+                </div>
+                <button onclick="showResetModal()" class="px-6 py-3 bg-red-600 hover:bg-red-700 rounded-2xl font-medium">RESET STREAK</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-screen-2xl mx-auto px-6 flex gap-8 pt-8">
+        
+        <!-- LEFT: STREAK LIST -->
+        <div class="w-96 bg-zinc-900 border border-zinc-800 rounded-3xl p-6 flex flex-col h-[calc(100vh-120px)] sticky top-6">
+            <h2 class="text-2xl font-bold mb-6 flex items-center justify-between">
+                CURRENT STREAK
+                <span id="build-count-badge" class="text-xs bg-emerald-500 text-black px-4 py-1 rounded-full font-mono">0 BUILDS</span>
+            </h2>
+            <div id="builds-list" class="flex-1 overflow-y-auto space-y-5 pr-3"></div>
+            <div id="empty-state" class="flex flex-col items-center justify-center h-full text-center hidden">
+                <p class="text-zinc-400">No builds saved.<br>Get to winning!</p>
+            </div>
+        </div>
+
+        <!-- MAIN CONTENT -->
+        <div class="flex-1">
+
+            <!-- PERK MODE -->
+            <div id="perk-mode">
+                <div class="mb-8 flex items-end justify-between">
+                    <div>
+                        <h2 class="text-4xl font-bold">Select Perks (0-4)</h2>
+                    </div>
+                    <div class="flex items-center gap-6">
+                        <div class="text-right">
+                            <div id="perk-count" class="text-6xl font-bold text-emerald-400 tabular-nums">0</div>
+                            <div class="text-xs uppercase tracking-widest text-zinc-500">perks selected</div>
+                        </div>
+                        <button onclick="confirmPerks()" class="px-10 py-5 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-2xl text-lg">
+                            CONFIRM PERKS →
+                        </button>
+                    </div>
+                </div>
+                <div id="perks-grid" class="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-8 xl:grid-cols-9 2xl:grid-cols-10 gap-x-6 gap-y-10 px-4 max-h-[calc(100vh-280px)] overflow-y-auto pb-12"></div>
+            </div>
+
+            <!-- KILLER MODE -->
+            <div id="killer-mode" class="hidden">
+                <div class="flex justify-between mb-8 items-center">
+                    <button onclick="backToPerks()" class="flex items-center gap-2 text-emerald-400 hover:text-white font-medium">← BACK TO PERKS</button>
+                    <h2 class="text-4xl font-bold">Choose Killer</h2>
+                    <button onclick="goToAddons()" class="px-10 py-5 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-2xl text-lg">NEXT: ADD-ONS →</button>
+                </div>
+                <div id="killer-mode-perks-preview" class="flex gap-6 mb-8"></div>
+                <div id="killers-grid" class="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-8 max-h-[calc(100vh-300px)] overflow-y-auto pb-12"></div>
+            </div>
+
+            <!-- ADD-ON MODE -->
+<div id="addon-mode" class="hidden">
+    <div class="flex justify-between mb-8 items-center">
+        <button onclick="backToKiller()" class="flex items-center gap-2 text-emerald-400 hover:text-white font-medium">← BACK TO KILLER</button>
+        <h2 class="text-4xl font-bold">Select Add-ons</h2>
+        <button onclick="confirmBuild()" class="px-10 py-5 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-2xl text-lg">ADD TO STREAK ✓</button>
+    </div>
+    
+    <div class="mb-8 text-center">
+        <p class="text-zinc-400">Select up to 2 add-ons (any rarity)</p>
+    </div>
+
+    <div id="addons-grid" class="grid grid-cols-5 gap-6 max-w-2xl mx-auto">
+        <!-- Populated by JavaScript -->
+    </div>
+</div>
+    <!-- RESET MODAL -->
+    <div id="reset-modal" class="hidden fixed inset-0 bg-black/90 z-[100] flex items-center justify-center">
+        <div class="bg-zinc-900 border border-red-700 rounded-3xl p-10 max-w-md text-center">
+            <div class="text-red-500 text-6xl mb-4">⚠️</div>
+            <h3 class="text-2xl font-bold mb-3">Reset streak?</h3>
+            <div class="flex gap-4">
+                <button onclick="hideResetModal()" class="flex-1 py-4 border border-zinc-600 hover:bg-zinc-800 rounded-2xl">Cancel</button>
+                <button onclick="performReset()" class="flex-1 py-4 bg-red-600 hover:bg-red-700 rounded-2xl font-bold">RESET</button>
+            </div>
+        </div>
+    </div>
+
+<div id="congrats-modal" class="hidden fixed inset-0 bg-black/90 z-[200] flex items-center justify-center">
+    <div class="bg-zinc-900 border border-emerald-500 rounded-3xl p-12 max-w-md text-center">
+        <div class="text-6xl mb-6">🎉</div>
+        <h2 class="text-4xl font-bold text-emerald-400 mb-4">CONGRATULATIONS!</h2>
+        <p class="text-2xl mb-8">Streak Completed!</p>
+        
+        <button onclick="hideCongratsModal()" 
+                class="px-10 py-4 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-2xl text-lg w-full">
+            Confirm
+        </button>
+    </div>
+</div>
+
+    <script>
+        // ====================== IMAGE LINKS ======================
+        const PERKS = [
+    { id: "aNursesCalling", name: "A Nurse's Calling", img: "https://deadbydaylight.wiki.gg/images/IconPerks_aNursesCalling.png" },
+    { id: "agitation", name: "Agitation", img: "https://deadbydaylight.wiki.gg/images/IconPerks_agitation.png" },
+    { id: "alienInstinct", name: "Alien Instinct", img: "https://deadbydaylight.wiki.gg/images/IconPerks_alienInstinct.png" },
+    { id: "allShakingThunder", name: "All-Shaking Thunder", img: "https://deadbydaylight.wiki.gg/images/IconPerks_allShakingThunder.png" },
+    { id: "awakenedAwareness", name: "Awakened Awareness", img: "https://deadbydaylight.wiki.gg/images/IconPerks_awakenedAwareness.png" },
+    { id: "bamboozle", name: "Bamboozle", img: "https://deadbydaylight.wiki.gg/images/IconPerks_bamboozle.png" },
+    { id: "barbecueAndChilli", name: "Barbecue & Chilli", img: "https://deadbydaylight.wiki.gg/images/IconPerks_barbecueAndChilli.png" },
+    { id: "batteriesIncluded", name: "Batteries Included", img: "https://deadbydaylight.wiki.gg/images/IconPerks_batteriesIncluded.png" },
+    { id: "beastOfPrey", name: "Beast of Prey", img: "https://deadbydaylight.wiki.gg/images/IconPerks_beastOfPrey.png" },
+    { id: "bitterMurmur", name: "Bitter Murmur", img: "https://deadbydaylight.wiki.gg/images/IconPerks_bitterMurmur.png" },
+    { id: "bloodEcho", name: "Blood Echo", img: "https://deadbydaylight.wiki.gg/images/IconPerks_bloodEcho.png" },
+    { id: "bloodWarden", name: "Blood Warden", img: "https://deadbydaylight.wiki.gg/images/IconPerks_bloodWarden.png" },
+    { id: "bloodhound", name: "Bloodhound", img: "https://deadbydaylight.wiki.gg/images/IconPerks_bloodhound.png" },
+    { id: "brutalStrength", name: "Brutal Strength", img: "https://deadbydaylight.wiki.gg/images/IconPerks_brutalStrength.png" },
+    { id: "callOfBrine", name: "Call of Brine", img: "https://deadbydaylight.wiki.gg/images/IconPerks_callOfBrine.png" },
+    { id: "corruptIntervention", name: "Corrupt Intervention", img: "https://deadbydaylight.wiki.gg/images/IconPerks_corruptIntervention.png" },
+    { id: "coulrophobia", name: "Coulrophobia", img: "https://deadbydaylight.wiki.gg/images/IconPerks_coulrophobia.png" },
+    { id: "coupDeGrace", name: "Coup de Grâce", img: "https://deadbydaylight.wiki.gg/images/IconPerks_coupDeGrâce.png" },
+    { id: "cruelLimits", name: "Cruel limits", img: "https://deadbydaylight.wiki.gg/images/IconPerks_cruelLimits.png" },
+    { id: "darkArrogance", name: "Dark Arrogance", img: "https://deadbydaylight.wiki.gg/images/IconPerks_darkArrogance.png" },
+    { id: "darkDevotion", name: "Dark Devotion", img: "https://deadbydaylight.wiki.gg/images/IconPerks_darkDevotion.png" },
+    { id: "darknessRevealed", name: "Darkness Revealed", img: "https://deadbydaylight.wiki.gg/images/IconPerks_darknessRevealed.png" },
+    { id: "deadMansSwitch", name: "Dead Man's Switch", img: "https://deadbydaylight.wiki.gg/images/IconPerks_deadMansSwitch.png" },
+    { id: "deadlock", name: "Deadlock", img: "https://deadbydaylight.wiki.gg/images/IconPerks_deadlock.png" },
+    { id: "deathbound", name: "Deathbound", img: "https://deadbydaylight.wiki.gg/images/IconPerks_deathbound.png" },
+    { id: "deerstalker", name: "Deerstalker", img: "https://deadbydaylight.wiki.gg/images/IconPerks_deerstalker.png" },
+    { id: "discordance", name: "Discordance", img: "https://deadbydaylight.wiki.gg/images/IconPerks_discordance.png" },
+    { id: "dissolution", name: "Dissolution", img: "https://deadbydaylight.wiki.gg/images/IconPerks_dissolution.png" },
+    { id: "distressing", name: "Distressing", img: "https://deadbydaylight.wiki.gg/images/IconPerks_distressing.png" },
+    { id: "dominance", name: "Dominance", img: "https://deadbydaylight.wiki.gg/images/IconPerks_Dominance.png" },
+    { id: "dragonsGrip", name: "Dragon's Grip", img: "https://deadbydaylight.wiki.gg/images/IconPerks_dragonsGrip.png" },
+    { id: "dyingLight", name: "Dying Light", img: "https://deadbydaylight.wiki.gg/images/IconPerks_dyingLight.png" },
+    { id: "enduring", name: "Enduring", img: "https://deadbydaylight.wiki.gg/images/IconPerks_enduring.png" },
+    { id: "eruption", name: "Eruption", img: "https://deadbydaylight.wiki.gg/images/IconPerks_eruption.png" },
+    { id: "fireUp", name: "Fire Up", img: "https://deadbydaylight.wiki.gg/images/IconPerks_fireUp.png" },
+    { id: "forcedHesitation", name: "Forced Hesitation", img: "https://deadbydaylight.wiki.gg/images/IconPerks_forcedHesitation.png" },
+    { id: "forcedPenance", name: "Forced Penance", img: "https://deadbydaylight.wiki.gg/images/IconPerks_forcedPenance.png" },
+    { id: "foreverEntwined", name: "Forever Entwined", img: "https://deadbydaylight.wiki.gg/images/IconPerks_ForeverEntwined.png" },
+    { id: "franklinsDemise", name: "Franklin's Demise", img: "https://deadbydaylight.wiki.gg/images/IconPerks_franklinsDemise.png" },
+    { id: "friendsTilTheEnd", name: "Friends 'Til The End", img: "https://deadbydaylight.wiki.gg/images/IconPerks_friendsTilTheEnd.png" },
+    { id: "furtiveChase", name: "Furtive Chase", img: "https://deadbydaylight.wiki.gg/images/IconPerks_furtiveChase.png" },
+    { id: "gameAfoot", name: "Game Afoot", img: "https://deadbydaylight.wiki.gg/images/IconPerks_gameAfoot.png" },
+    { id: "gearhead", name: "Gearhead", img: "https://deadbydaylight.wiki.gg/images/IconPerks_gearhead.png" },
+    { id: "geneticLimits", name: "Genetic Limits", img: "https://deadbydaylight.wiki.gg/images/IconPerks_geneticLimits.png" },
+    { id: "grimEmbrace", name: "Grim Embrace", img: "https://deadbydaylight.wiki.gg/images/IconPerks_grimEmbrace.png" },
+    { id: "haywire", name: "Haywire", img: "https://deadbydaylight.wiki.gg/images/IconPerks_Haywire.png" },
+    { id: "helpWanted", name: "Help Wanted", img: "https://deadbydaylight.wiki.gg/images/IconPerks_HelpWanted.png" },
+    { id: "hexBloodFavour", name: "Hex: Blood Favour", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hexBloodFavour.png" },
+    { id: "hexCrowdControl", name: "Hex: Crowd Control", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hexCrowdControl.png" },
+    { id: "hexDevourHope", name: "Hex: Devour Hope", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hexDevourHope.png" },
+    { id: "hexFaceTheDarkness", name: "Hex: Face the Darkness", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hexFaceTheDarkness.png" },
+    { id: "hexHauntedGround", name: "Hex: Haunted Ground", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hexHauntedGround.png" },
+    { id: "HexHiveMind", name: "Hex: Hive Mind", img: "https://deadbydaylight.wiki.gg/images/IconsPerks_HexHiveMind.png" },
+    { id: "hexHuntressLullaby", name: "Hex: Huntress Lullaby", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hexHuntressLullaby.png" },
+    { id: "hexNoOneEscapesDeath", name: "Hex: No One Escapes Death", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hexNoOneEscapesDeath.png" },
+    { id: "HexNothingButMisery", name: "Hex: Nothing but Misery", img: "https://deadbydaylight.wiki.gg/images/IconPerks_NothingButMisery.png" },
+    { id: "HexOvertureOfDoom", name: "Hex: Overture of Doom", img: "https://deadbydaylight.wiki.gg/images/IconPerks_HexOvertureOfDoom.png" },
+    { id: "hexPentimento", name: "Hex: Pentimento", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hexPentimento.png" },
+    { id: "hexPlaything", name: "Hex: Plaything", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hexPlaything.png" },
+    { id: "hexRetribution", name: "Hex: Retribution", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hexRetribution.png" },
+    { id: "hexRuin", name: "Hex: Ruin", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hexRuin.png" },
+    { id: "hexTheThirdSeal", name: "Hex: The Third Seal", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hexTheThirdSeal.png" },
+    { id: "hexThrillOfTheHunt", name: "Hex: Thrill of the Hunt", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hexThrillOfTheHunt.png" },
+    { id: "hexTwoCanPlay", name: "Hex: Two Can Play", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hexTwoCanPlay.png" },
+    { id: "hexUndying", name: "Hex: Undying", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hexUndying.png" },
+    { id: "hexWretchedFate", name: "Hex: Wretched Fate", img: "https://deadbydaylight.wiki.gg/images/IconPerks_HexWretchedFate.png" },
+    { id: "hoarder", name: "Hoarder", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hoarder.png" },
+    { id: "hubris", name: "Hubris", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hubris.png" },
+    { id: "HumanGreed", name: "Human Greed", img: "https://deadbydaylight.wiki.gg/images/IconPerks_HumanGreed.png" },
+    { id: "hysteria", name: "Hysteria", img: "https://deadbydaylight.wiki.gg/images/IconPerks_hysteria.png" },
+    { id: "imAllEars", name: "I'm All Ears", img: "https://deadbydaylight.wiki.gg/images/IconPerks_imAllEars.png" },
+    { id: "infectiousFright", name: "Infectious Fright", img: "https://deadbydaylight.wiki.gg/images/IconPerks_infectiousFright.png" },
+    { id: "insidious", name: "Insidious", img: "https://deadbydaylight.wiki.gg/images/IconPerks_insidious.png" },
+    { id: "ironGrasp", name: "Iron Grasp", img: "https://deadbydaylight.wiki.gg/images/IconPerks_ironGrasp.png" },
+    { id: "ironMaiden", name: "Iron Maiden", img: "https://deadbydaylight.wiki.gg/images/IconPerks_ironMaiden.png" },
+    { id: "knockOut", name: "Knock Out", img: "https://deadbydaylight.wiki.gg/images/IconPerks_knockOut.png" },
+    { id: "languidTouch", name: "Languid Touch", img: "https://deadbydaylight.wiki.gg/images/IconPerks_languidTouch.png" },
+    { id: "lethalPursuer", name: "Lethal Pursuer", img: "https://deadbydaylight.wiki.gg/images/IconPerks_lethalPursuer.png" },
+    { id: "leverage", name: "Leverage", img: "https://deadbydaylight.wiki.gg/images/IconPerks_leverage.png" },
+    { id: "lightborn", name: "Lightborn", img: "https://deadbydaylight.wiki.gg/images/IconPerks_lightborn.png" },
+    { id: "machineLearning", name: "Machine Learning", img: "https://deadbydaylight.wiki.gg/images/IconPerks_machineLearning.png" },
+    { id: "madGrit", name: "Mad Grit", img: "https://deadbydaylight.wiki.gg/images/IconPerks_madGrit.png" },
+    { id: "makeYourChoice", name: "Make Your Choice", img: "https://deadbydaylight.wiki.gg/images/IconPerks_makeYourChoice.png" },
+    { id: "mercilessStorm", name: "Merciless Storm", img: "https://deadbydaylight.wiki.gg/images/IconPerks_mercilessStorm.png" },
+    { id: "mindbreaker", name: "Mindbreaker", img: "https://deadbydaylight.wiki.gg/images/IconPerks_mindbreaker.png" },
+    { id: "monitorAndAbuse", name: "Monitor & Abuse", img: "https://deadbydaylight.wiki.gg/images/IconPerks_monitorAndAbuse.png" },
+    { id: "nemesis", name: "Nemesis", img: "https://deadbydaylight.wiki.gg/images/IconPerks_nemesis.png" },
+    { id: "noQuarter", name: "No Quarter", img: "https://deadbydaylight.wiki.gg/images/IconPerks_noQuarter.png" },
+    { id: "noWayOut", name: "No Way Out", img: "https://deadbydaylight.wiki.gg/images/IconPerks_noWayOut.png" },
+    { id: "NoneAreFree", name: "None Are Free", img: "https://deadbydaylight.wiki.gg/images/IconPerks_NoneAreFree.png" },
+    { id: "nowhereToHide", name: "Nowhere To Hide", img: "https://deadbydaylight.wiki.gg/images/IconPerks_nowhereToHide.png" },
+    { id: "oppression", name: "Oppression", img: "https://deadbydaylight.wiki.gg/images/IconPerks_oppression.png" },
+    { id: "overcharge", name: "Overcharge", img: "https://deadbydaylight.wiki.gg/images/IconPerks_overcharge.png" },
+    { id: "overwhelmingPresence", name: "Overwhelming Presence", img: "https://deadbydaylight.wiki.gg/images/IconPerks_overwhelmingPresence.png" },
+    { id: "PhantomFear", name: "Phantom Fear", img: "https://deadbydaylight.wiki.gg/images/IconPerks_PhantomFear.png" },
+    { id: "playWithYourFood", name: "Play With Your Food", img: "https://deadbydaylight.wiki.gg/images/IconPerks_playWithYourFood.png" },
+    { id: "popGoesTheWeasel", name: "Pop Goes The Weasel", img: "https://deadbydaylight.wiki.gg/images/IconPerks_popGoesTheWeasel.png" },
+    { id: "predator", name: "Predator", img: "https://deadbydaylight.wiki.gg/images/IconPerks_predator.png" },
+    { id: "rancor", name: "Rancor", img: "https://deadbydaylight.wiki.gg/images/IconPerks_rancor.png" },
+    { id: "rapidBrutality", name: "Rapid Brutality", img: "https://deadbydaylight.wiki.gg/images/IconPerks_rapidBrutality.png" },
+    { id: "Ravenous", name: "Ravenous", img: "https://deadbydaylight.wiki.gg/images/IconPerks_Ravenous.png" },
+    { id: "rememberMe", name: "Remember Me", img: "https://deadbydaylight.wiki.gg/images/IconPerks_rememberMe.png" },
+    { id: "saveTheBestForLast", name: "Save The Best For Last", img: "https://deadbydaylight.wiki.gg/images/IconPerks_saveTheBestForLast.png" },
+    { id: "scourgeHookFloodsOfRage", name: "Scourge Hook: Floods of Rage", img: "https://deadbydaylight.wiki.gg/images/IconPerks_scourgeHookFloodsOfRage.png" },
+    { id: "scourgeHookGiftOfPain", name: "Scourge Hook: Gift of Pain", img: "https://deadbydaylight.wiki.gg/images/IconPerks_scourgeHookGiftOfPain.png" },
+    { id: "scourgeHookHangmansTrick", name: "Scourge Hook: Hangman's Trick", img: "https://deadbydaylight.wiki.gg/images/IconPerks_scourgeHookHangmansTrick.png" },
+    { id: "scourgeHookJaggedCompass", name: "Scourge Hook: Jagged Compass", img: "https://deadbydaylight.wiki.gg/images/IconPerks_scourgeHookJaggedCompass.png" },
+    { id: "scourgeHookMonstrousShrine", name: "Scourge Hook: Monstrous Shrine", img: "https://deadbydaylight.wiki.gg/images/IconPerks_scourgeHookMonstrousShrine.png" },
+    { id: "scourgeHookPainResonance", name: "Scourge Hook: Pain Resonance", img: "https://deadbydaylight.wiki.gg/images/IconPerks_scourgeHookPainResonance.png" },
+    { id: "SecretProject", name: "Secret Project", img: "https://deadbydaylight.wiki.gg/images/IconsPerks_SecretProject.png" },
+    { id: "septicTouch", name: "Septic Touch", img: "https://deadbydaylight.wiki.gg/images/IconPerks_septicTouch.png" },
+    { id: "shadowborn", name: "Shadowborn", img: "https://deadbydaylight.wiki.gg/images/IconPerks_shadowborn.png" },
+    { id: "shatteredHope", name: "Shattered Hope", img: "https://deadbydaylight.wiki.gg/images/IconPerks_shatteredHope.png" },
+    { id: "sloppyButcher", name: "Sloppy Butcher", img: "https://deadbydaylight.wiki.gg/images/IconPerks_sloppyButcher.png" },
+    { id: "spiesFromTheShadows", name: "Spies From The Shadows", img: "https://deadbydaylight.wiki.gg/images/IconPerks_spiesFromTheShadows.png" },
+    { id: "spiritFury", name: "Spirit Fury", img: "https://deadbydaylight.wiki.gg/images/IconPerks_spiritFury.png" },
+    { id: "starstruck", name: "Starstruck", img: "https://deadbydaylight.wiki.gg/images/IconPerks_starstruck.png" },
+    { id: "stridor", name: "Stridor", img: "https://deadbydaylight.wiki.gg/images/IconPerks_stridor.png" },
+    { id: "superiorAnatomy", name: "Superior Anatomy", img: "https://deadbydaylight.wiki.gg/images/IconPerks_superiorAnatomy.png" },
+    { id: "surge", name: "Surge", img: "https://deadbydaylight.wiki.gg/images/IconPerks_surge.png" },
+    { id: "surveillance", name: "Surveillance", img: "https://deadbydaylight.wiki.gg/images/IconPerks_surveillance.png" },
+    { id: "thwack", name: "Thwack", img: "https://deadbydaylight.wiki.gg/images/IconPerks_thwack.png" },
+    { id: "terminus", name: "Terminus", img: "https://deadbydaylight.wiki.gg/images/IconPerks_terminus.png" },
+    { id: "territorialImperative", name: "Territorial Imperative", img: "https://deadbydaylight.wiki.gg/images/IconPerks_territorialImperative.png" },
+    { id: "thanataphobia", name: "Thanataphobia", img: "https://deadbydaylight.wiki.gg/images/IconPerks_thanatophobia.png" },
+    { id: "thrillingTremors", name: "Thrilling Tremors", img: "https://deadbydaylight.wiki.gg/images/IconPerks_thrillingTremors.png" },
+    { id: "tinkerer", name: "Tinkerer", img: "https://deadbydaylight.wiki.gg/images/IconPerks_tinkerer.png" },
+    { id: "trailOfTorment", name: "Trail of Torment", img: "https://deadbydaylight.wiki.gg/images/IconPerks_trailOfTorment.png" },
+    { id: "TurnBackTheClock", name: "Turn Back The Clock", img: "https://deadbydaylight.wiki.gg/images/IconsPerks_TurnBackTheClock.png" },
+    { id: "ultimateWeapon", name: "Ultimate Weapon", img: "https://deadbydaylight.wiki.gg/images/IconPerks_ultimateWeapon.png" },
+    { id: "unbound", name: "Unbound", img: "https://deadbydaylight.wiki.gg/images/IconPerks_unbound.png" },
+    { id: "undone", name: "Undone", img: "https://deadbydaylight.wiki.gg/images/IconPerks_undone.png" },
+    { id: "unforeseen", name: "Unforeseen", img: "https://deadbydaylight.wiki.gg/images/IconPerks_unforeseen.png" },
+    { id: "unnervingPresence", name: "Unnerving Presence", img: "https://deadbydaylight.wiki.gg/images/IconPerks_unnervingPresence.png" },
+    { id: "unrelenting", name: "Unrelenting", img: "https://deadbydaylight.wiki.gg/images/IconPerks_unrelenting.png" },
+    { id: "WanderingEye", name: "Wandering Eye", img: "https://deadbydaylight.wiki.gg/images/IconPerks_WanderingEye.png" },
+    { id: "weaveAttunement", name: "Weave Attunement", img: "https://deadbydaylight.wiki.gg/images/IconPerks_weaveAttunement.png" },
+    { id: "whispers", name: "Whispers", img: "https://deadbydaylight.wiki.gg/images/IconPerks_whispers.png" },
+    { id: "zanshinTactics", name: "Zanshin Tactics", img: "https://deadbydaylight.wiki.gg/images/IconPerks_zanshinTactics.png" }
+    // Note: This covers the vast majority of killer perks in alphabetical order.
+    // If a specific perk image fails to load, visit its wiki page and adjust the filename casing slightly (the wiki is case-sensitive).
+];
+
+        const KILLERS = [
+    { id: "trapper", name: "The Trapper", img: "https://deadbydaylight.wiki.gg/images/K01_TheTrapper_Portrait.png" },
+    { id: "wraith", name: "The Wraith", img: "https://deadbydaylight.wiki.gg/images/K02_TheWraith_Portrait.png" },
+    { id: "hillbilly", name: "The Hillbilly", img: "https://deadbydaylight.wiki.gg/images/K03_TheHillbilly_Portrait.png" },
+    { id: "nurse", name: "The Nurse", img: "https://deadbydaylight.wiki.gg/images/K04_TheNurse_Portrait.png" },
+    { id: "shape", name: "The Shape", img: "https://deadbydaylight.wiki.gg/images/K05_TheShape_Portrait.png" },
+    { id: "hag", name: "The Hag", img: "https://deadbydaylight.wiki.gg/images/K06_TheHag_Portrait.png" },
+    { id: "doctor", name: "The Doctor", img: "https://deadbydaylight.wiki.gg/images/K07_TheDoctor_Portrait.png" },
+    { id: "huntress", name: "The Huntress", img: "https://deadbydaylight.wiki.gg/images/K08_TheHuntress_Portrait.png" },
+    { id: "cannibal", name: "The Cannibal", img: "https://deadbydaylight.wiki.gg/images/K09_TheCannibal_Portrait.png" },
+    { id: "nightmare", name: "The Nightmare", img: "https://deadbydaylight.wiki.gg/images/K10_TheNightmare_Portrait.png" },
+    { id: "pig", name: "The Pig", img: "https://deadbydaylight.wiki.gg/images/K11_ThePig_Portrait.png" },
+    { id: "clown", name: "The Clown", img: "https://deadbydaylight.wiki.gg/images/K12_TheClown_Portrait.png" },
+    { id: "spirit", name: "The Spirit", img: "https://deadbydaylight.wiki.gg/images/K13_TheSpirit_Portrait.png" },
+    { id: "legion", name: "The Legion", img: "https://deadbydaylight.wiki.gg/images/K14_TheLegion_Portrait.png" },
+    { id: "plague", name: "The Plague", img: "https://deadbydaylight.wiki.gg/images/K15_ThePlague_Portrait.png" },
+    { id: "ghostFace", name: "The Ghost Face", img: "https://deadbydaylight.wiki.gg/images/K16_TheGhostFace_Portrait.png" },
+    { id: "demogorgon", name: "The Demogorgon", img: "https://deadbydaylight.wiki.gg/images/K17_TheDemogorgon_Portrait.png" },
+    { id: "oni", name: "The Oni", img: "https://deadbydaylight.wiki.gg/images/K18_TheOni_Portrait.png" },
+    { id: "deathslinger", name: "The Deathslinger", img: "https://deadbydaylight.wiki.gg/images/K19_TheDeathslinger_Portrait.png" },
+    { id: "executioner", name: "The Executioner", img: "https://deadbydaylight.wiki.gg/images/K20_TheExecutioner_Portrait.png" },
+    { id: "blight", name: "The Blight", img: "https://deadbydaylight.wiki.gg/images/K21_TheBlight_Portrait.png" },
+    { id: "twins", name: "The Twins", img: "https://deadbydaylight.wiki.gg/images/K22_TheTwins_Portrait.png" },
+    { id: "trickster", name: "The Trickster", img: "https://deadbydaylight.wiki.gg/images/K23_TheTrickster_Portrait.png" },
+    { id: "nemesis", name: "The Nemesis", img: "https://deadbydaylight.wiki.gg/images/K24_TheNemesis_Portrait.png" },
+    { id: "cenobite", name: "The Cenobite", img: "https://deadbydaylight.wiki.gg/images/K25_TheCenobite_Portrait.png" },
+    { id: "artist", name: "The Artist", img: "https://deadbydaylight.wiki.gg/images/K26_TheArtist_Portrait.png" },
+    { id: "onryo", name: "The Onryō", img: "https://deadbydaylight.wiki.gg/images/K27_TheOnryo_Portrait.png" },
+    { id: "dredge", name: "The Dredge", img: "https://deadbydaylight.wiki.gg/images/K28_TheDredge_Portrait.png" },
+    { id: "mastermind", name: "The Mastermind", img: "https://deadbydaylight.wiki.gg/images/K29_TheMastermind_Portrait.png" },
+    { id: "knight", name: "The Knight", img: "https://deadbydaylight.wiki.gg/images/K30_TheKnight_Portrait.png" },
+    { id: "skullMerchant", name: "The Skull Merchant", img: "https://deadbydaylight.wiki.gg/images/K31_TheSkullMerchant_Portrait.png" },
+    { id: "singularity", name: "The Singularity", img: "https://deadbydaylight.wiki.gg/images/K32_TheSingularity_Portrait.png" },
+    { id: "xenomorph", name: "The Xenomorph", img: "https://deadbydaylight.wiki.gg/images/K33_TheXenomorph_Portrait.png" },
+    { id: "goodGuy", name: "The Good Guy", img: "https://deadbydaylight.wiki.gg/images/K34_TheGoodGuy_Portrait.png" },
+    { id: "unknown", name: "The Unknown", img: "https://deadbydaylight.wiki.gg/images/K35_TheUnknown_Portrait.png" },
+    { id: "lich", name: "The Lich", img: "https://deadbydaylight.wiki.gg/images/K36_TheLich_Portrait.png" },
+    { id: "darkLord", name: "The Dark Lord", img: "https://deadbydaylight.wiki.gg/images/K37_TheDarkLord_Portrait.png" },
+    { id: "houndmaster", name: "The Houndmaster", img: "https://deadbydaylight.wiki.gg/images/K38_TheHoundmaster_Portrait.png" },
+    { id: "ghoul", name: "The Ghoul", img: "https://deadbydaylight.wiki.gg/images/K39_TheGhoul_Portrait.png" },
+    { id: "animatronic", name: "The Animatronic", img: "https://deadbydaylight.wiki.gg/images/K40_TheAnimatronic_Portrait.png" },
+    { id: "krasue", name: "The Krasue", img: "https://deadbydaylight.wiki.gg/images/K41_TheKrasue_Portrait.png" },
+    { id: "first", name: "The First", img: "https://deadbydaylight.wiki.gg/images/K42_TheFirst_Portrait.png" }
+];
+
+const ADDON_SLOTS = [
+    { id: "c1",  label: "C",  color: "#8B4513" },
+    { id: "c2",  label: "C",  color: "#8B4513" },
+    { id: "u1",  label: "U",  color: "#228B22" },
+    { id: "u2",  label: "U",  color: "#228B22" },
+    { id: "r1",  label: "R",  color: "#1E90FF" },
+    { id: "r2",  label: "R",  color: "#1E90FF" },
+    { id: "vr1", label: "VR", color: "#8A2BE2" },
+    { id: "vr2", label: "VR", color: "#8A2BE2" },
+    { id: "v1",  label: "V",  color: "#B22222" },
+    { id: "v2",  label: "V",  color: "#B22222" }
+];
+
+// ====================== STATE ======================
+        let usedKillers = new Set();
+        let usedPerks = new Set();
+        let builds = [];
+        let currentSelectedPerks = [];
+        let currentSelectedKiller = null;
+        let currentSelectedAddons = [];
+
+        // ====================== LOCALSTORAGE ======================
+        function saveToLocalStorage() {
+            const data = {
+                builds: builds,
+                usedKillers: Array.from(usedKillers),
+                usedPerks: Array.from(usedPerks)
+            };
+            localStorage.setItem('dbdStreakTracker', JSON.stringify(data));
+        }
+
+        function loadFromLocalStorage() {
+            const saved = localStorage.getItem('dbdStreakTracker');
+            if (!saved) return false;
+            try {
+                const data = JSON.parse(saved);
+                builds = data.builds || [];
+                usedKillers = new Set(data.usedKillers || []);
+                usedPerks = new Set(data.usedPerks || []);
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+    // ====================== RENDER FUNCTIONS ======================
+    function renderPerks() {
+        const grid = document.getElementById('perks-grid');
+        grid.innerHTML = '';
+
+        PERKS.forEach(perk => {
+            const isSelected = currentSelectedPerks.some(p => p.id === perk.id);
+            const isUsed = usedPerks.has(perk.id);
+
+            const div = document.createElement('div');
+            div.className = `perk-card flex flex-col items-center cursor-pointer ${isUsed ? 'used' : ''} ${isSelected ? 'selected' : ''}`;
+            div.innerHTML = `
+                <div class="perk-diamond ${isSelected ? 'selected' : ''}">
+                    <img src="${perk.img}" alt="${perk.name}">
+                </div>
+                <p class="text-center text-xs mt-3 font-medium leading-tight max-w-[110px]">${perk.name}</p>
+            `;
+            div.onclick = () => togglePerk(perk.id);
+            grid.appendChild(div);
+        });
+
+        document.getElementById('perk-count').textContent = currentSelectedPerks.length;
+    }
+
+    function renderKillers() {
+        const grid = document.getElementById('killers-grid');
+        grid.innerHTML = '';
+
+        KILLERS.forEach(killer => {
+            const isUsed = usedKillers.has(killer.id);
+            const isSelected = currentSelectedKiller && currentSelectedKiller.id === killer.id;
+
+            const div = document.createElement('div');
+            div.className = `killer-card flex flex-col items-center cursor-pointer ${isUsed ? 'used' : ''} ${isSelected ? 'selected' : ''}`;
+            div.innerHTML = `
+                <img src="${killer.img}" class="killer-portrait" alt="${killer.name}">
+                <p class="text-center font-semibold mt-4 text-sm">${killer.name}</p>
+            `;
+            if (!isUsed) {
+                div.onclick = () => {
+                    currentSelectedKiller = killer;
+                    renderKillers();
+                };
+            }
+            grid.appendChild(div);
+        });
+    }
+
+function renderAddons() {
+    const grid = document.getElementById('addons-grid');
+    grid.innerHTML = '';
+
+    ADDON_SLOTS.forEach(slot => {
+        const isSelected = currentSelectedAddons.some(a => a.id === slot.id);
+
+        const div = document.createElement('div');
+        div.className = `flex flex-col items-center cursor-pointer transition-all ${isSelected ? 'scale-105' : ''}`;
+        div.innerHTML = `
+            <div class="w-20 h-20 flex items-center justify-center text-white text-3xl font-bold rounded-2xl border-2 border-zinc-700 ${isSelected ? 'ring-2 ring-emerald-400' : ''}" 
+                 style="background-color: ${slot.color};">
+                ${slot.label}
+            </div>
+            <p class="text-xs mt-2 text-zinc-400">${slot.label}</p>
+        `;
+        div.onclick = () => toggleAddon(slot);
+        grid.appendChild(div);
+    });
+}
+
+function renderBuilds() {
+    const container = document.getElementById('builds-list');
+    const empty = document.getElementById('empty-state');
+
+    const progress = Math.min((builds.length / 42) * 100, 100);
+    document.getElementById('progress-fill').style.width = `${progress}%`;
+    document.getElementById('progress-text').textContent = `${builds.length} / 42`;
+    document.getElementById('build-count-badge').textContent = `${builds.length} BUILDS`;
+
+    if (builds.length === 0) {
+        empty.classList.remove('hidden');
+        document.getElementById('build-count-badge').textContent = '0 BUILDS';
+        document.getElementById('progress-fill').style.width = '0%';
+        document.getElementById('progress-text').textContent = '0 / 42';
+        return;
+    }
+    if (builds.length >= 42) {
+        // Small delay so the user sees the final number first
+        setTimeout(() => {
+            showCongratsModal();
+        }, 600);
+    }
+
+    empty.classList.add('hidden');
+
+    let html = '';
+    builds.forEach((build, i) => {
+        const perkHTML = build.perks.map(p => 
+            `<img src="${p.img}" class="w-8 h-8 object-contain rounded" title="${p.name}">`
+        ).join('');
+
+        const addonHTML = build.addons && build.addons.length > 0 ? 
+            build.addons.map(a => `
+                <div class="w-7 h-7 flex items-center justify-center text-xs font-bold rounded-lg text-white" 
+                     style="background-color: ${a.color}">${a.label}</div>
+            `).join('') : '';
+
+        html += `
+        <div class="bg-zinc-800 border border-zinc-700 rounded-2xl p-4 flex gap-4">
+            <div class="font-mono text-emerald-400 text-3xl w-8">${i+1}</div>
+            <img src="${build.killer.img}" class="w-14 h-20 object-cover rounded-lg border border-zinc-600">
+            <div class="flex-1">
+                <div class="font-semibold">${build.killer.name}</div>
+                <div class="flex flex-wrap gap-2 mt-3">${perkHTML}</div>
+                ${addonHTML ? `<div class="flex gap-2 mt-3">${addonHTML}</div>` : ''}
+            </div>
+        </div>`;
+    });
+
+    container.innerHTML = html;
+
+    // FIXED PROGRESS BAR + TEXT
+    const progressPercent = Math.min((builds.length / 42) * 100, 100);
+    document.getElementById('progress-fill').style.width = `${progressPercent}%`;
+    document.getElementById('progress-text').textContent = `${builds.length} / 42`;
+    document.getElementById('build-count-badge').textContent = `${builds.length} BUILDS`;
+}
+// ==Congrats!==
+
+function showCongratsModal() {
+    document.getElementById('congrats-modal').classList.remove('hidden');
+    document.getElementById('congrats-modal').classList.add('flex');
+}
+
+function hideCongratsModal() {
+    const modal = document.getElementById('congrats-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+    // ====================== INTERACTIONS ======================
+    function togglePerk(id) {
+        const perk = PERKS.find(p => p.id === id);
+        if (!perk || usedPerks.has(id)) return;
+
+        const idx = currentSelectedPerks.findIndex(p => p.id === id);
+        if (idx > -1) {
+            currentSelectedPerks.splice(idx, 1);
+        } else if (currentSelectedPerks.length < 4) {
+            currentSelectedPerks.push(perk);
+        } else {
+            alert("Maximum 4 perks per killer!");
+            return;
+        }
+        renderPerks();
+        saveToLocalStorage();   // Auto-save
+    }
+function toggleAddon(slot) {
+    const index = currentSelectedAddons.findIndex(a => a.id === slot.id);
+
+    if (index > -1) {
+        // Deselect this slot
+        currentSelectedAddons.splice(index, 1);
+    } else if (currentSelectedAddons.length < 2) {
+        // Select this slot
+        currentSelectedAddons.push(slot);
+    } else {
+        alert("You can only select up to 2 add-ons total.");
+        return;
+    }
+
+    renderAddons();
+}
+
+        function confirmPerks() {
+            document.getElementById('perk-mode').classList.add('hidden');
+            document.getElementById('killer-mode').classList.remove('hidden');
+            renderKillers();
+            renderKillerPreview();
+        }
+
+        function goToAddons() {
+            if (!currentSelectedKiller) {
+                alert("Please select a killer first.");
+                return;
+            }
+            document.getElementById('killer-mode').classList.add('hidden');
+            document.getElementById('addon-mode').classList.remove('hidden');
+            currentSelectedAddons = [];
+            renderAddons();
+        }
+
+        function backToKiller() {
+            document.getElementById('addon-mode').classList.add('hidden');
+            document.getElementById('killer-mode').classList.remove('hidden');
+        }
+
+        function backToPerks() {
+            document.getElementById('killer-mode').classList.add('hidden');
+            document.getElementById('perk-mode').classList.remove('hidden');
+            currentSelectedKiller = null;
+            renderPerks();
+        }
+
+        function confirmBuild() {
+            if (!currentSelectedKiller) return;
+
+            builds.push({
+                killer: currentSelectedKiller,
+                perks: [...currentSelectedPerks],
+                addons: [...currentSelectedAddons]
+            });
+
+            usedKillers.add(currentSelectedKiller.id);
+            currentSelectedPerks.forEach(p => usedPerks.add(p.id));
+
+            currentSelectedPerks = [];
+            currentSelectedKiller = null;
+            currentSelectedAddons = [];
+
+            document.getElementById('addon-mode').classList.add('hidden');
+            document.getElementById('perk-mode').classList.remove('hidden');
+
+            renderPerks();
+            renderBuilds();
+            saveToLocalStorage();
+        }
+
+        function showResetModal() { document.getElementById('reset-modal').classList.remove('hidden'); }
+        function hideResetModal() { document.getElementById('reset-modal').classList.add('hidden'); }
+
+        function performReset() {
+            hideResetModal();
+            builds = [];
+            usedKillers.clear();
+            usedPerks.clear();
+            currentSelectedPerks = [];
+            currentSelectedKiller = null;
+            currentSelectedAddons = [];
+            document.getElementById('addon-mode').classList.add('hidden');
+            document.getElementById('killer-mode').classList.add('hidden');
+            document.getElementById('perk-mode').classList.remove('hidden');
+            renderPerks();
+            renderBuilds();
+            saveToLocalStorage();
+        }
+
+        function init() {
+            loadFromLocalStorage();
+            renderPerks();
+            renderBuilds();
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
