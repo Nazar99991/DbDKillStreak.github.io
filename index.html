@@ -119,7 +119,7 @@
             </h2>
             <div id="builds-list" class="flex-1 overflow-y-auto space-y-5 pr-3"></div>
             <div id="empty-state" class="flex flex-col items-center justify-center h-full text-center hidden">
-                <p class="text-zinc-400">No builds saved.<br>Get to winning!</p>
+                <p class="text-zinc-400">Good luck!</p>
             </div>
         </div>
 
@@ -163,13 +163,11 @@
         <h2 class="text-4xl font-bold">Select Add-ons</h2>
         <button onclick="confirmBuild()" class="px-10 py-5 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-2xl text-lg">ADD TO STREAK ✓</button>
     </div>
-    
     <div class="mb-8 text-center">
-        <p class="text-zinc-400">Select up to 2 add-ons (any rarity)</p>
+        <p class="text-zinc-400">Select up to 2 add-ons</p>
     </div>
 
     <div id="addons-grid" class="grid grid-cols-5 gap-6 max-w-2xl mx-auto">
-        <!-- Populated by JavaScript -->
     </div>
 </div>
     <!-- RESET MODAL -->
@@ -339,8 +337,6 @@
     { id: "weaveAttunement", name: "Weave Attunement", img: "https://deadbydaylight.wiki.gg/images/IconPerks_weaveAttunement.png" },
     { id: "whispers", name: "Whispers", img: "https://deadbydaylight.wiki.gg/images/IconPerks_whispers.png" },
     { id: "zanshinTactics", name: "Zanshin Tactics", img: "https://deadbydaylight.wiki.gg/images/IconPerks_zanshinTactics.png" }
-    // Note: This covers the vast majority of killer perks in alphabetical order.
-    // If a specific perk image fails to load, visit its wiki page and adjust the filename casing slightly (the wiki is case-sensitive).
 ];
 
         const KILLERS = [
@@ -519,7 +515,6 @@ function renderBuilds() {
         return;
     }
     if (builds.length >= 42) {
-        // Small delay so the user sees the final number first
         setTimeout(() => {
             showCongratsModal();
         }, 600);
@@ -553,13 +548,11 @@ function renderBuilds() {
 
     container.innerHTML = html;
 
-    // FIXED PROGRESS BAR + TEXT
     const progressPercent = Math.min((builds.length / 42) * 100, 100);
     document.getElementById('progress-fill').style.width = `${progressPercent}%`;
     document.getElementById('progress-text').textContent = `${builds.length} / 42`;
     document.getElementById('build-count-badge').textContent = `${builds.length} BUILDS`;
 }
-// ==Congrats!==
 
 function showCongratsModal() {
     document.getElementById('congrats-modal').classList.remove('hidden');
@@ -587,16 +580,14 @@ function hideCongratsModal() {
             return;
         }
         renderPerks();
-        saveToLocalStorage();   // Auto-save
+        saveToLocalStorage();
     }
 function toggleAddon(slot) {
     const index = currentSelectedAddons.findIndex(a => a.id === slot.id);
 
     if (index > -1) {
-        // Deselect this slot
         currentSelectedAddons.splice(index, 1);
     } else if (currentSelectedAddons.length < 2) {
-        // Select this slot
         currentSelectedAddons.push(slot);
     } else {
         alert("You can only select up to 2 add-ons total.");
